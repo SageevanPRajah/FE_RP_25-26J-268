@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ADHD Eye Tasks — Fun Recording</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Ctext y='14' font-size='14'%3E🎯%3C/text%3E%3C/svg%3E">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#0b1020;color:#eef2ff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial}
+  .app{display:flex;height:100%}
+  .left{width:360px;background:#0f1a33;border-right:1px solid #193255;padding:16px;box-sizing:border-box;overflow:auto}
+  .right{position:relative;flex:1;background:#0b132b}
+  video#preview, video#screenPrev{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none}
+  canvas#stage{position:absolute;inset:0;width:100%;height:100%}
+  .btn{display:block;width:100%;margin:8px 0;padding:10px 12px;background:#22c55e;color:#fff;border:none;border-radius:12px;font-weight:700;cursor:pointer}
+  .btn.secondary{background:#3b82f6}
+  .btn.warn{background:#f97316}
+  .btn.ghost{background:#334155}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .pill{display:inline-block;background:#0b132b;border:1px solid #1e2a46;border-radius:999px;padding:2px 8px;font-size:12px;margin-left:6px}
+  .status{background:#0b132b;border:1px solid #1e2a46;border-radius:10px;padding:10px;font-size:13px}
+  .h{margin:0 0 8px 0}
+  .legend{color:#a7b2d9;font-size:13px}
+  .toast{position:absolute;top:12px;left:50%;transform:translateX(-50%);background:#111827;border:1px solid #2a3b5f;padding:8px 12px;border-radius:10px;color:#e5e7eb;z-index:5}
+  .taskbar{display:grid;grid-template-columns:1fr;gap:6px;margin-top:10px}
+  .tag{background:#1e293b;border-radius:8px;padding:2px 8px;display:inline-block;margin:2px 4px 0 0;font-size:12px}
+  .row{display:flex;gap:6px}
+  input, select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid #1e2a46;background:#0b132b;color:#e5e7eb}
+  .small{font-size:12px;opacity:.85}
+
+  /* --- Live preview box --- */
+  #previewBox{margin-top:12px}
+  #liveThumb{
+    width:100%; aspect-ratio:16/9; background:#000; border-radius:10px;
+    border:1px solid #1e2a46; object-fit:cover;
+    transform:scaleX(-1); /* mirror for natural view */
+    display:none; /* hidden until toggled */
+  }
+  .labelRow{display:flex;align-items:center;gap:8px;margin:6px 0}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="left">
+    <h2 class="h">🎮 ADHD Eye Tasks — Recording</h2>
+    <p class="legend">We record the <strong>webcam</strong> (face) and optionally the <strong>screen</strong>. Child never sees their own video.</p>
+
+    <div class="legend" style="margin:8px 0 6px">Participant & Session</div>
+    <div class="row">
+      <input id="pid" placeholder="Participant ID (e.g., SCH01_P003)"/>
+    </div>
+    <div class="row">
+      <select id="cohort">
+        <option value="">Cohort</option>
+        <option>Control</option>
+        <option>ADHD</option>
+        <option>Unknown</option>
+      </select>
+      <input id="age" type="number" min="3" max="18" placeholder="Age"/>
+    </div>
+    <div class="row">
+      <input id="note" placeholder="Notes (lighting, distance ~50–60cm)"/>
+    </div>
+
+    <button id="btnStart" class="btn">🎥 Start Camera & Recording</button>
+    <button id="btnStartScreen" class="btn ghost">🖥️ Start Screen Recording (optional)</button>
+    <button id="btnFull" class="btn ghost">⛶ Go Fullscreen (recommended)</button>
+
+    <div class="row">
+      <button id="btnSync" class="btn secondary" disabled>⚡ Sync Flash + Beep</button>
+      <button id="btnDrift" class="btn ghost" disabled>📍 Mark Drift/Recal</button>
+    </div>
+
+    <div class="taskbar">
+      <button id="btnCalib9" class="btn secondary" disabled>🔵 Calibration — 9-Point (ground truth)</button>
+      <button id="btnCalib3" class="btn secondary" disabled>🔵 Re-Calibration — 3-Point</button>
+      <button id="btnCalibFun" class="btn secondary" disabled>🎈 Calibration — Bubble Pop (fun)</button>
+
+      <button id="btnProsac" class="btn secondary" disabled>🍓 Prosaccade — Catch the Red Fruit</button>
+      <button id="btnAnti"   class="btn secondary" disabled>👾 Antisaccade — Opposite Treasure</button>
+      <button id="btnFree"   class="btn secondary" disabled>💤 Free-Viewing — Relax (30s)</button>
+
+      <!-- NEW TASKS -->
+      <button id="btnFixStable" class="btn secondary" disabled>🎯 Fixation Stability — 15s</button>
+      <button id="btnPursuit"   class="btn secondary" disabled>🟡 Smooth Pursuit — 20s</button>
+      <button id="btnPLR"       class="btn secondary" disabled>💡 Pupil Light Reflex — 12s</button>
+    </div>
+
+    <button id="btnStop" class="btn warn" disabled>⏹ Stop & Save All</button>
+
+    <div class="status" style="margin-top:10px">
+      <div><strong>Status:</strong> <span id="state">Idle</span></div>
+      <div>Webcam rec: <span id="recCam" class="pill">off</span></div>
+      <div>Screen rec: <span id="recScreen" class="pill">off</span></div>
+      <div>Video format: <span id="fmt" class="pill">—</span></div>
+    </div>
+
+    <!-- Live preview + lighting meter -->
+    <div id="previewBox" class="status">
+      <div class="labelRow">
+        <input type="checkbox" id="togglePreview">
+        <label for="togglePreview"><strong>Show live preview</strong></label>
+      </div>
+      <video id="liveThumb" autoplay playsinline muted></video>
+      <div class="legend small" style="margin-top:6px">
+        Lighting: <span id="lightStatus" class="pill">—</span>
+        <span class="pill">avg <span id="lightAvg">—</span></span>
+      </div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div class="legend"><strong>Tips</strong></div>
+      <ul class="legend">
+        <li>Even lighting, child ~50–60 cm from screen.</li>
+        <li>Face centered in webcam; avoid backlight.</li>
+        <li>Short breaks are okay.</li>
+      </ul>
+      <div class="legend small">
+        <span class="tag">🔵 9-pt = mapping</span>
+        <span class="tag">⚡ sync = align timelines</span>
+        <span class="tag">📄 CSV+JSON logs</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="right" id="stageWrap">
+    <video id="preview" autoplay muted playsinline></video>
+    <video id="screenPrev" autoplay muted playsinline></video>
+    <canvas id="stage"></canvas>
+    <div id="toast" class="toast" style="display:none;"></div>
+  </main>
+</div>
+
+<script>
+(function(){
+  // ---------- DOM ----------
+  const stageWrap = document.getElementById('stageWrap');
+  const video = document.getElementById('preview');
+  const screenPrev = document.getElementById('screenPrev');
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+  const toast = document.getElementById('toast');
+  const state = document.getElementById('state');
+  const recCamEl = document.getElementById('recCam');
+  const recScreenEl = document.getElementById('recScreen');
+  const fmtEl = document.getElementById('fmt');
+  const pidEl = document.getElementById('pid');
+  const cohortEl = document.getElementById('cohort');
+  const ageEl = document.getElementById('age');
+  const noteEl = document.getElementById('note');
+
+  // Live preview elements
+  const liveThumb = document.getElementById('liveThumb');
+  const togglePreview = document.getElementById('togglePreview');
+  const lightStatus = document.getElementById('lightStatus');
+  const lightAvgEl = document.getElementById('lightAvg');
+  const lightCanvas = document.createElement('canvas');
+  const lightCtx = lightCanvas.getContext('2d');
+  let lightTimer = null;
+
+  let W=0,H=0; function fit(){ canvas.width=canvas.clientWidth; canvas.height=canvas.clientHeight; W=canvas.width; H=canvas.height; }
+  window.addEventListener('resize', fit); fit();
+
+  // ---------- AUDIO ----------
+  const actx = new (window.AudioContext||window.webkitAudioContext)();
+  function beep(freq=700, ms=120, type='sine', vol=0.15){
+    const o=actx.createOscillator(), g=actx.createGain();
+    o.type=type; o.frequency.value=freq; g.gain.value=vol; o.connect(g); g.connect(actx.destination);
+    o.start(); setTimeout(()=>o.stop(), ms);
+  }
+
+  // ---------- HELPERS ----------
+  function now(){ return performance.now(); }
+  function showToast(msg, ms=1400){ toast.textContent=msg; toast.style.display='block'; setTimeout(()=>toast.style.display='none', ms); }
+  function setState(s){ state.textContent=s; }
+  function clearStage(){ ctx.clearRect(0,0,W,H); }
+  function rand(a,b){ return Math.floor(a + Math.random()*(b-a)); }
+
+  function enableControls(on){
+    const ids = [
+      'btnSync','btnDrift','btnCalib9','btnCalib3','btnCalibFun',
+      'btnProsac','btnAnti','btnFree',
+      'btnFixStable','btnPursuit','btnPLR',
+      'btnStop'
+    ];
+    ids.forEach(id => document.getElementById(id).disabled = !on);
+  }
+
+  // ---------- RECORDING ----------
+  let camStream, camRecorder, camChunks=[];
+  let screenStream, screenRecorder, screenChunks=[];
+  let chosenMime='', fileExt='webm';
+
+  const mimeCandidates = ['video/mp4;codecs=avc1','video/mp4;codecs=h264','video/webm;codecs=vp9','video/webm;codecs=vp8'];
+  for(const t of mimeCandidates){
+    if (window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)){
+      chosenMime=t; fileExt=t.startsWith('video/mp4')?'mp4':'webm'; break;
+    }
+  }
+
+  // Lighting meter
+  function startLightingCheck(){
+    stopLightingCheck();
+    lightTimer = setInterval(()=>{
+      if(!camStream || liveThumb.readyState < 2) return;
+      const vw = liveThumb.videoWidth || 640, vh = liveThumb.videoHeight || 360;
+      const sw = 160, sh = Math.max(90, Math.round(160*vh/vw));
+      lightCanvas.width = sw; lightCanvas.height = sh;
+      lightCtx.drawImage(liveThumb, 0, 0, sw, sh);
+      const data = lightCtx.getImageData(0,0,sw,sh).data;
+      let sum = 0;
+      for(let i=0;i<data.length;i+=4){
+        const y = 0.2126*data[i] + 0.7152*data[i+1] + 0.0722*data[i+2];
+        sum += y;
+      }
+      const avg = Math.round(sum / (sw*sh));
+      lightAvgEl.textContent = avg;
+      if(avg >= 140){ lightStatus.textContent='Good'; }
+      else if(avg >= 90){ lightStatus.textContent='Fair'; }
+      else{ lightStatus.textContent='Poor'; }
+    }, 1000);
+  }
+  function stopLightingCheck(){ if(lightTimer){ clearInterval(lightTimer); lightTimer=null; } }
+
+  async function startCamera(){
+    if(!pidEl.value){ alert('Please set Participant ID first.'); return; }
+    try{
+      camStream = await navigator.mediaDevices.getUserMedia({
+        video:{width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:60, max:60}},
+        audio:false
+      });
+      video.srcObject = camStream;
+      liveThumb.srcObject = camStream; // feed live preview (shown only if toggled)
+
+      const recOpts = chosenMime? { mimeType: chosenMime, videoBitsPerSecond: 4_000_000 } : undefined;
+      camRecorder = new MediaRecorder(camStream, recOpts);
+      camChunks=[];
+      camRecorder.ondataavailable = e => { if(e.data && e.data.size) camChunks.push(e.data); };
+      camRecorder.onstop = ()=> saveBlob(camChunks, `${prefix()}_cam.${fileExt}`);
+      camRecorder.start();
+
+      recCamEl.textContent='on'; fmtEl.textContent = chosenMime||'webm';
+      setState('Recording… Webcam ON'); enableControls(true);
+      logEvent('session_start', {});
+      showToast('🎥 Webcam recording started');
+    }catch(e){ console.error(e); alert('Camera access denied. Allow camera and retry.'); }
+  }
+
+  async function startScreen(){
+    try{
+      screenStream = await navigator.mediaDevices.getDisplayMedia({video:true, audio:false});
+      screenPrev.srcObject = screenStream;
+      const recOpts = chosenMime? { mimeType: chosenMime, videoBitsPerSecond: 4_000_000 } : undefined;
+      screenRecorder = new MediaRecorder(screenStream, recOpts);
+      screenChunks=[];
+      screenRecorder.ondataavailable = e => { if(e.data && e.data.size) screenChunks.push(e.data); };
+      screenRecorder.onstop = ()=> saveBlob(screenChunks, `${prefix()}_screen.${fileExt}`);
+      screenRecorder.start();
+      recScreenEl.textContent='on';
+      showToast('🖥️ Screen recording started');
+      logEvent('screen_recording_start', {});
+    }catch(e){ console.warn('Screen share not started:', e); }
+  }
+
+  function stopAll(){
+    try{
+      stopLightingCheck();
+      if(camRecorder && camRecorder.state==='recording') camRecorder.stop();
+      if(screenRecorder && screenRecorder.state==='recording') screenRecorder.stop();
+      if(camStream) camStream.getTracks().forEach(t=>t.stop());
+      if(screenStream) screenStream.getTracks().forEach(t=>t.stop());
+      recCamEl.textContent='off'; recScreenEl.textContent='off';
+      liveThumb.srcObject = null;
+      liveThumb.style.display='none';
+      togglePreview.checked=false;
+
+      enableControls(false);
+      setState('Stopping & saving…');
+      stopLoop(); clearStage();
+      logEvent('session_stop', {});
+      saveLogs();
+      showToast('✅ Saved: videos + logs');
+      setState('Idle');
+    }catch(e){ console.error(e); }
+  }
+
+  function saveBlob(chunks, filename){
+    const blob = new Blob(chunks, {type: chosenMime || 'video/webm'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function prefix(){
+    const id = pidEl.value || 'PID';
+    const cohort = (cohortEl.value||'NA').toUpperCase();
+    const d = new Date();
+    const ds = d.toISOString().slice(0,19).replace(/[:T]/g,'-');
+    return `${id}_${cohort}_${ds}`;
+  }
+
+  // ---------- EVENT LOGGING ----------
+  const logs = {
+    meta: {},
+    events: [],
+    trials: [],           // per-trial summaries
+    calibration: { grid:[], samples:[] }
+  };
+
+  function initMeta(){
+    logs.meta = {
+      participant_id: pidEl.value || '',
+      cohort: cohortEl.value || '',
+      age: ageEl.value || '',
+      notes: noteEl.value || '',
+      stage_w: W, stage_h: H, dpr: window.devicePixelRatio || 1,
+      user_agent: navigator.userAgent,
+      started_at_iso: new Date().toISOString()
+    };
+  }
+
+  function logEvent(type, payload={}){ logs.events.push({ t_ms: now(), type, payload }); }
+  function addTrialSummary(entry){ logs.trials.push(entry); }
+
+  function download(text, filename, type='text/plain'){
+    const blob = new Blob([text], {type});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function toCSV(rows){
+    if(!rows.length) return '';
+    const keys = Array.from(new Set(rows.flatMap(r => Object.keys(r))));
+    const esc = v => (v==null?'':String(v)).replace(/"/g,'""');
+    const header = keys.map(k=>`"${esc(k)}"`).join(',');
+    const body = rows.map(r => keys.map(k=>`"${esc(r[k])}"`).join(',')).join('\n');
+    return header+'\n'+body;
+  }
+
+  function saveLogs(){
+    // events CSV
+    const rows = logs.events.map(e => ({
+      t_ms: Math.round(e.t_ms),
+      type: e.type,
+      ...Object.fromEntries(Object.entries(e.payload||{}).map(([k,v])=>[k, typeof v==='object'? JSON.stringify(v): v]))
+    }));
+    download(toCSV(rows), `${prefix()}_events.csv`, 'text/csv');
+
+    // per-trial summaries CSV
+    if(logs.trials.length){
+      download(toCSV(logs.trials), `${prefix()}_trials.csv`, 'text/csv');
+    }
+
+    // full JSON
+    download(JSON.stringify(logs, null, 2), `${prefix()}_session.json`, 'application/json');
+  }
+
+  // ---------- FULLSCREEN ----------
+  async function goFullscreen(){
+    try{
+      if(stageWrap.requestFullscreen) await stageWrap.requestFullscreen();
+      else if(stageWrap.webkitRequestFullscreen) await stageWrap.webkitRequestFullscreen();
+      setTimeout(fit, 200);
+    }catch(e){ console.warn('Fullscreen failed:', e); }
+  }
+
+  // ---------- ANIMATION LOOP ----------
+  let raf=null, running=false;
+  function loop(draw){
+    cancelAnimationFrame(raf);
+    running=true;
+    const step=()=>{ if(!running) return; draw(); raf=requestAnimationFrame(step); };
+    raf=requestAnimationFrame(step);
+  }
+  function stopLoop(){ running=false; cancelAnimationFrame(raf); raf=null; }
+
+  // ---------- SYNC FLASH + BEEP ----------
+  function syncFlash(){
+    const start = now();
+    const dur = 200;
+    beep(900,120,'square',0.2);
+    logEvent('sync_flash_start', {});
+    function draw(){
+      const t=now()-start;
+      clearStage();
+      ctx.fillStyle = (t<dur) ? '#ffffff' : '#0b132b';
+      ctx.fillRect(0,0,W,H);
+      if(t<dur){ requestAnimationFrame(draw); }
+      else { clearStage(); logEvent('sync_flash_end', {}); showToast('⚡ Sync flashed'); }
+    }
+    draw();
+  }
+
+  // ---------- CALIBRATION ----------
+  function calibrationGrid(n=9){
+    const xs = [0.15, 0.5, 0.85];
+    const ys = n===3? [0.5] : [0.2, 0.5, 0.8];
+    const pts = [];
+    for(const y of ys) for(const x of xs) pts.push({x:Math.round(x*W), y:Math.round(y*H)});
+    return pts;
+  }
+
+  async function runCalibFixed(points){
+    const DOT_MS = 1500;
+    const R = 12;
+    let idx = 0;
+    logs.calibration.grid = points;
+    setState(points.length===9?'Calibration — 9-Point':'Re-Calibration — 3-Point');
+    showToast(points.length===9?'👀 Follow the dots (9)':'👀 Recalibrate (3 points)');
+    beep(800,100,'triangle');
+
+    function drawPoint(p){
+      clearStage();
+      ctx.beginPath(); ctx.arc(p.x,p.y, R, 0, Math.PI*2);
+      ctx.fillStyle='#22d3ee'; ctx.fill();
+      ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(p.x-10,p.y); ctx.lineTo(p.x+10,p.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p.x,p.y-10); ctx.lineTo(p.x,p.y+10); ctx.stroke();
+    }
+
+    function showNext(){
+      if(idx>=points.length){ clearStage(); showToast('✨ Calibration done!'); setState('Calibration complete'); return; }
+      const p = points[idx];
+      logEvent('calib_point_start', {screen_x:p.x, screen_y:p.y});
+      drawPoint(p);
+      setTimeout(()=>{
+        logEvent('calib_point_end', {screen_x:p.x, screen_y:p.y});
+        idx++; showNext();
+      }, DOT_MS);
+    }
+    showNext();
+  }
+
+  // Fun engagement (not used for mapping)
+  async function runCalibrationFun(){
+    setState('Calibration — Bubble Pop');
+    showToast('🎈 Pop the bubbles!');
+    beep(800,100,'triangle');
+    clearStage();
+    const bubbles=[];
+    const colors=['#60a5fa','#22d3ee','#f472b6','#facc15','#34d399','#c084fc'];
+    for(let i=0;i<9;i++){
+      bubbles.push({
+        x: Math.random()*W*0.8 + W*0.1,
+        y: Math.random()*H*0.8 + H*0.1,
+        r: 26,
+        c: colors[i%colors.length],
+        vy: - (0.45 + Math.random()*0.6)
+      });
+    }
+    function draw(){
+      clearStage();
+      for(const b of bubbles){
+        b.y += b.vy;
+        if(b.y < 40 || b.y > H-40){ b.vy *= -1; }
+        const g=ctx.createRadialGradient(b.x,b.y,6,b.x,b.y,b.r+14);
+        g.addColorStop(0, b.c+'aa'); g.addColorStop(1, '#00000011');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+        ctx.lineWidth=4; ctx.strokeStyle='#ffffff22'; ctx.stroke();
+      }
+    }
+    function onClick(e){
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      for(let i=bubbles.length-1;i>=0;i--){
+        const b=bubbles[i];
+        if( (mx-b.x)**2 + (my-b.y)**2 <= (b.r+10)**2 ){
+          bubbles.splice(i,1); beep(900,120,'square',0.08); break;
+        }
+      }
+      if(bubbles.length===0){
+        canvas.removeEventListener('click', onClick);
+        stopLoop(); clearStage();
+        showToast('✨ Fun calibration done'); setState('Calibration (fun) complete');
+      }
+    }
+    canvas.addEventListener('click', onClick);
+    loop(draw);
+  }
+
+  // ---------- TASKS ----------
+  function centerFixation(){
+    ctx.fillStyle='#93c5fd'; ctx.font='bold 44px system-ui'; ctx.textAlign='center'; ctx.fillText('+', W/2, H/2);
+  }
+
+  // Prosaccade
+  async function runProsaccade(){
+    setState('Prosaccade — Catch the Red Fruit');
+    showToast('🍓 Click the RED fruit!');
+    beep(750,120,'sine');
+
+    const fruits = ['🍓','🍋','🍇','🍏','🍊','🍍'];
+    let current=null, trials=0;
+    const TRIAL_MAX = 20;
+    const FIX_MIN = 900, FIX_MAX = 1200;
+    const TARGET_DUR = 1400;
+    const ITI = 500;
+    const HIT_RADIUS = 58;
+
+    function spawn(){
+      const trial_id = `P_${Date.now()}_${trials+1}`;
+      const left = Math.random()<0.5;
+      const x = left? W*0.22 : W*0.78;
+      const y = H*0.55;
+      const isRed = Math.random()<0.6;
+      const emoji = isRed? '🍓' : fruits[Math.floor(Math.random()*fruits.length)];
+      const t0 = now();
+      logEvent('trial_start', {task:'prosaccade', trial_id, side: left?'left':'right'});
+      current = {trial_id, x,y, emoji, isRed, born:t0, phase:'fix', next:t0+rand(FIX_MIN,FIX_MAX), t_on:null};
+      logEvent('fix_on', {trial_id});
+    }
+
+    function draw(){
+      clearStage();
+      centerFixation();
+      if(!current){ spawn(); return; }
+      const t = now();
+      if(current.phase==='fix' && t>=current.next){
+        current.phase='target'; current.next = t + TARGET_DUR; current.t_on = t;
+        logEvent('target_on', {trial_id:current.trial_id, x:Math.round(current.x), y:Math.round(current.y), isRed:current.isRed});
+      }
+      if(current.phase==='target'){
+        ctx.font='72px serif'; ctx.textAlign='center';
+        ctx.fillText(current.emoji, current.x, current.y);
+        if(t>=current.next){
+          logEvent('trial_end', {trial_id:current.trial_id, reason:'timeout'});
+          addTrialSummary({
+            task:'prosaccade', trial_id: current.trial_id, side: current.x < W/2 ? 'left':'right',
+            correct: 0, hit: 0, rt_ms: '', end_reason:'timeout'
+          });
+          current=null; trials++;
+          if(trials>=TRIAL_MAX){ finish(); return; }
+          const waitUntil = now() + ITI;
+          const waitLoop = ()=>{ if(now()<waitUntil){ requestAnimationFrame(waitLoop); } else { spawn(); } };
+          waitLoop();
+        }
+      }
+    }
+
+    function onClick(e){
+      if(!current || current.phase!=='target') return;
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      const d = Math.hypot(mx-current.x, my-current.y);
+      const hit = d < HIT_RADIUS;
+      if(hit){
+        const correct = current.isRed ? 1 : 0;
+        const rt = current.t_on ? Math.round(now()-current.t_on) : '';
+        if(correct){ showToast('✅ Nice catch!'); beep(880,110,'triangle'); }
+        else { showToast('❌ Red only!'); beep(300,120,'sawtooth'); }
+        logEvent('response', {trial_id:current.trial_id, hit:1, correct});
+        logEvent('trial_end', {trial_id:current.trial_id, reason:'click'});
+        addTrialSummary({
+          task:'prosaccade', trial_id: current.trial_id, side: current.x < W/2 ? 'left':'right',
+          correct, hit:1, rt_ms: rt, end_reason:'click'
+        });
+        current=null; trials++;
+        if(trials>=TRIAL_MAX){ finish(); return; }
+        setTimeout(spawn, ITI);
+      }
+    }
+
+    function finish(){
+      canvas.removeEventListener('click', onClick);
+      stopLoop(); clearStage();
+      showToast('🍓 Prosaccade complete'); setState('Prosaccade complete');
+    }
+
+    canvas.addEventListener('click', onClick);
+    loop(draw);
+  }
+
+  // Antisaccade
+  async function runAntisaccade(){
+    setState('Antisaccade — Opposite Treasure');
+    showToast('👀 Look away from the alien — click the treasure!');
+    beep(700,130,'sine');
+
+    let phase='fix';
+    let cueSideLeft=true;
+    let cueAt=0, respAt=0, trials=0;
+    const TRIAL_MAX = 20;
+    const alien='👾', treasure='🪙';
+    let trial_id=null;
+    let t_target_on=null;
+
+    function newTrial(){
+      trials++;
+      if(trials>TRIAL_MAX){ finish(); return; }
+      trial_id = `A_${Date.now()}_${trials}`;
+      phase='fix';
+      cueSideLeft = Math.random()<0.5;
+      const t0 = now();
+      logEvent('trial_start', {task:'antisaccade', trial_id, cue_side: cueSideLeft?'left':'right'});
+      logEvent('fix_on', {trial_id});
+      cueAt = t0 + (700 + Math.random()*400);
+      respAt = 0;
+      t_target_on = null;
+    }
+
+    function draw(){
+      clearStage();
+      centerFixation();
+      const t=now();
+      if(phase==='fix' && t>cueAt){
+        phase='cue';
+        logEvent('cue_on', {trial_id, side: cueSideLeft?'left':'right'});
+      }
+      if(phase==='cue'){
+        const x = cueSideLeft? W*0.25 : W*0.75, y = H*0.55;
+        ctx.font='72px serif'; ctx.textAlign='center'; ctx.fillText(alien, x, y);
+        if(!respAt){ respAt = t + 350; }
+        if(t>respAt){
+          phase='resp';
+          const tx = cueSideLeft? W*0.75 : W*0.25, ty = H*0.55;
+          t_target_on = t;
+          logEvent('target_on', {trial_id, x: Math.round(tx), y: Math.round(ty)});
+        }
+      }
+      if(phase==='resp'){
+        const x = cueSideLeft? W*0.75 : W*0.25, y = H*0.55;
+        ctx.font='72px serif'; ctx.textAlign='center'; ctx.fillText(treasure, x, y);
+      }
+    }
+
+    function onClick(e){
+      if(phase!=='resp') return;
+      const rect=canvas.getBoundingClientRect();
+      const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      const tx = cueSideLeft? W*0.75 : W*0.25, ty = H*0.55;
+      const ok = Math.hypot(mx-tx, my-ty) < 56;
+      const rt = t_target_on ? Math.round(now()-t_target_on) : '';
+      if(ok){ showToast('🏆 Opposite — correct!'); beep(880,110,'triangle'); logEvent('response', {trial_id, correct:1}); }
+      else { showToast('👾 That was the alien side!'); beep(300,120,'sawtooth'); logEvent('response', {trial_id, correct:0}); }
+      logEvent('trial_end', {trial_id, reason:'click'});
+      addTrialSummary({
+        task:'antisaccade', trial_id, cue_side: cueSideLeft?'left':'right',
+        correct: ok?1:0, rt_ms: rt, end_reason:'click'
+      });
+      setTimeout(newTrial, 450);
+    }
+
+    function finish(){
+      canvas.removeEventListener('click', onClick);
+      stopLoop(); clearStage();
+      showToast('👾 Antisaccade complete'); setState('Antisaccade complete');
+    }
+
+    canvas.addEventListener('click', onClick);
+    loop(draw);
+    newTrial();
+  }
+
+  // Free viewing
+  async function runFreeViewing(){
+    setState('Free-Viewing — Relax (30s)');
+    showToast('💤 Relax and watch the shapes'); logEvent('free_view_start', {});
+    const t0 = now();
+    function draw(){
+      clearStage();
+      const t=(now()-t0)/1000;
+      for(let i=0;i<7;i++){
+        const x = Math.round((0.15 + 0.12*i + 0.05*Math.sin(t + i))*W);
+        const y = Math.round((0.3 + 0.22*Math.cos(t*0.9 + i))*H);
+        const r = 26 + 10*Math.sin(t*1.4+i);
+        const hue = 180 + i*30;
+        ctx.fillStyle = `hsl(${hue},70%,60%)`;
+        ctx.beginPath(); ctx.arc(x,y, r, 0, Math.PI*2); ctx.fill();
+      }
+    }
+    loop(draw);
+    setTimeout(()=>{ stopLoop(); clearStage(); showToast('✅ Free-Viewing complete'); setState('Free-Viewing complete'); logEvent('free_view_end', {}); }, 30000);
+  }
+
+  // NEW: Fixation Stability — 15s
+  async function runFixationStability(){
+    const DURATION_MS = 15000;
+    setState('Fixation Stability — 15s');
+    showToast('🎯 Keep your eyes on the +');
+    logEvent('fix_stability_start', {duration_ms:DURATION_MS});
+    const t0 = now();
+
+    function draw(){
+      clearStage();
+      ctx.fillStyle='#93c5fd'; ctx.font='bold 44px system-ui';
+      ctx.textAlign='center'; ctx.fillText('+', W/2, H/2);
+    }
+    loop(draw);
+
+    setTimeout(()=>{
+      stopLoop(); clearStage();
+      logEvent('fix_stability_end', {elapsed_ms: Math.round(now()-t0)});
+      showToast('✅ Fixation stability done'); setState('Fixation stability complete');
+    }, DURATION_MS);
+  }
+
+  // NEW: Smooth Pursuit — 20s
+  async function runSmoothPursuit(){
+    const DURATION_MS = 20000;
+    const AMP = 0.35;       // 35% screen half-width
+    const FREQ = 0.4;       // Hz
+    const R = 12;
+    const logEvery = 50;    // ms
+    let lastLog = 0;
+
+    setState('Smooth Pursuit — 20s');
+    showToast('🟡 Follow the moving dot');
+    logEvent('pursuit_start', {duration_ms:DURATION_MS, freq_hz:FREQ, amp_ratio:AMP});
+    const t0 = now();
+
+    function draw(){
+      clearStage();
+      const t = (now()-t0)/1000;
+      const x = Math.round(W/2 + Math.sin(2*Math.PI*FREQ*t) * (W*AMP));
+      const y = Math.round(H*0.55);
+
+      ctx.beginPath(); ctx.arc(x,y,R,0,Math.PI*2);
+      ctx.fillStyle='#facc15'; ctx.fill();
+
+      if(now()-lastLog >= logEvery){
+        lastLog = now();
+        logEvent('pursuit_pos', {x, y, t_ms: Math.round(now()-t0)});
+      }
+    }
+    loop(draw);
+
+    setTimeout(()=>{
+      stopLoop(); clearStage();
+      logEvent('pursuit_end', {elapsed_ms: Math.round(now()-t0)});
+      showToast('✅ Pursuit done'); setState('Pursuit complete');
+    }, DURATION_MS);
+  }
+
+  // NEW: Pupil Light Reflex — ~12s
+  async function runPLR(){
+    const CYCLES = 3;
+    const DARK_MS = 2000;
+    const BRIGHT_MS = 2000;
+    const totalMS = CYCLES*(DARK_MS+BRIGHT_MS);
+
+    setState('Pupil Light Reflex — ~12s');
+    showToast('💡 Look at the screen');
+    logEvent('plr_start', {cycles:CYCLES, dark_ms:DARK_MS, bright_ms:BRIGHT_MS});
+
+    let phase = 'dark';
+    let phaseEnd = now() + DARK_MS;
+
+    function draw(){
+      clearStage();
+      ctx.fillStyle = (phase==='dark') ? '#0b0b0b' : '#ffffff';
+      ctx.fillRect(0,0,W,H);
+      // tiny corner marker
+      ctx.fillStyle = (phase==='dark') ? '#222' : '#ddd';
+      ctx.fillRect(W-30, H-30, 24, 24);
+
+      if(now() >= phaseEnd){
+        if(phase==='dark'){
+          phase='bright'; phaseEnd = now()+BRIGHT_MS;
+          logEvent('plr_step', {phase:'bright'});
+          beep(900,80,'sine',0.05);
+        } else {
+          phase='dark'; phaseEnd = now()+DARK_MS;
+          logEvent('plr_step', {phase:'dark'});
+          beep(600,80,'sine',0.05);
+        }
+      }
+    }
+    logEvent('plr_step', {phase:'dark'});
+    loop(draw);
+
+    setTimeout(()=>{
+      stopLoop(); clearStage();
+      logEvent('plr_end', {total_ms: totalMS});
+      showToast('✅ PLR done'); setState('PLR complete');
+    }, totalMS);
+  }
+
+  // ---------- WIRES ----------
+  document.getElementById('btnStart').onclick = () => { initMeta(); startCamera(); };
+  document.getElementById('btnStartScreen').onclick = startScreen;
+  document.getElementById('btnStop').onclick  = stopAll;
+  document.getElementById('btnFull').onclick  = goFullscreen;
+
+  document.getElementById('btnSync').onclick  = () => { syncFlash(); };
+  document.getElementById('btnDrift').onclick = () => { logEvent('drift_marker', {}); showToast('📍 Drift marker saved'); };
+
+  document.getElementById('btnCalib9').onclick = () => runCalibFixed(calibrationGrid(9));
+  document.getElementById('btnCalib3').onclick = () => runCalibFixed(calibrationGrid(3));
+  document.getElementById('btnCalibFun').onclick= runCalibrationFun;
+
+  document.getElementById('btnProsac').onclick= runProsaccade;
+  document.getElementById('btnAnti').onclick  = runAntisaccade;
+  document.getElementById('btnFree').onclick  = runFreeViewing;
+
+  // NEW task bindings
+  document.getElementById('btnFixStable').onclick = runFixationStability;
+  document.getElementById('btnPursuit').onclick   = runSmoothPursuit;
+  document.getElementById('btnPLR').onclick       = runPLR;
+
+  // Live preview toggle
+  togglePreview.addEventListener('change', ()=>{
+    if(togglePreview.checked){
+      liveThumb.style.display = 'block';
+      startLightingCheck();
+    } else {
+      liveThumb.style.display = 'none';
+      stopLightingCheck();
+    }
+  });
+
+  // Keyboard shortcuts (optional): S=sync, R=3-pt recal
+  window.addEventListener('keydown', (e)=>{
+    if(e.key.toLowerCase()==='s' && !document.getElementById('btnSync').disabled) syncFlash();
+    if(e.key.toLowerCase()==='r' && !document.getElementById('btnCalib3').disabled) runCalibFixed(calibrationGrid(3));
+  });
+})();
+</script>
+</body>
+</html>
