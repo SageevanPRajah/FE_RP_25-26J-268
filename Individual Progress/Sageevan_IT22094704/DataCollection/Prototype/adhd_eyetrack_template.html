@@ -78,7 +78,7 @@
 
       <button id="btnProsac" class="btn secondary" disabled>🍓 Prosaccade — Catch the Red Fruit</button>
       <button id="btnAnti"   class="btn secondary" disabled>👾 Antisaccade — Opposite Treasure</button>
-      <button id="btnFree"   class="btn secondary" disabled>💤 Free-Viewing — Relax (30s)</button>
+      <button id="btnFree"   class="btn secondary" disabled>💤 Free-Viewing — Relax (10s)</button>
 
       <!-- NEW TASKS -->
       <button id="btnFixStable" class="btn secondary" disabled>🎯 Fixation Stability — 15s</button>
@@ -484,7 +484,7 @@
     ctx.fillStyle='#93c5fd'; ctx.font='bold 44px system-ui'; ctx.textAlign='center'; ctx.fillText('+', W/2, H/2);
   }
 
-  // Prosaccade
+  // Prosaccade — forgiving click when target is 🍓
   async function runProsaccade(){
     setState('Prosaccade — Catch the Red Fruit');
     showToast('🍓 Click the RED fruit!');
@@ -496,7 +496,9 @@
     const FIX_MIN = 900, FIX_MAX = 1200;
     const TARGET_DUR = 1400;
     const ITI = 500;
+
     const HIT_RADIUS = 58;
+    const FORGIVENESS = 18; // allow small extra range for correct target (kid-friendly)
 
     function spawn(){
       const trial_id = `P_${Date.now()}_${trials+1}`;
@@ -543,8 +545,12 @@
       const rect=canvas.getBoundingClientRect();
       const mx=e.clientX-rect.left, my=e.clientY-rect.top;
       const d = Math.hypot(mx-current.x, my-current.y);
-      const hit = d < HIT_RADIUS;
-      if(hit){
+
+      const inPrimary = d < HIT_RADIUS;
+      const inForgiven = current.isRed && d < (HIT_RADIUS + FORGIVENESS);
+      const accepted = inPrimary || inForgiven;
+
+      if(accepted){
         const correct = current.isRed ? 1 : 0;
         const rt = current.t_on ? Math.round(now()-current.t_on) : '';
         if(correct){ showToast('✅ Nice catch!'); beep(880,110,'triangle'); }
@@ -571,7 +577,7 @@
     loop(draw);
   }
 
-  // Antisaccade
+  // Antisaccade — forgiving click around treasure 🪙
   async function runAntisaccade(){
     setState('Antisaccade — Opposite Treasure');
     showToast('👀 Look away from the alien — click the treasure!');
@@ -584,6 +590,9 @@
     const alien='👾', treasure='🪙';
     let trial_id=null;
     let t_target_on=null;
+
+    const TREASURE_RADIUS = 56;
+    const FORGIVENESS = 16; // small extra for kids
 
     function newTrial(){
       trials++;
@@ -613,8 +622,8 @@
         if(!respAt){ respAt = t + 350; }
         if(t>respAt){
           phase='resp';
-          const tx = cueSideLeft? W*0.75 : W*0.25, ty = H*0.55;
           t_target_on = t;
+          const tx = cueSideLeft? W*0.75 : W*0.25, ty = H*0.55;
           logEvent('target_on', {trial_id, x: Math.round(tx), y: Math.round(ty)});
         }
       }
@@ -629,14 +638,19 @@
       const rect=canvas.getBoundingClientRect();
       const mx=e.clientX-rect.left, my=e.clientY-rect.top;
       const tx = cueSideLeft? W*0.75 : W*0.25, ty = H*0.55;
-      const ok = Math.hypot(mx-tx, my-ty) < 56;
+      const d = Math.hypot(mx-tx, my-ty);
+
+      const accepted = d < (TREASURE_RADIUS + FORGIVENESS);
       const rt = t_target_on ? Math.round(now()-t_target_on) : '';
-      if(ok){ showToast('🏆 Opposite — correct!'); beep(880,110,'triangle'); logEvent('response', {trial_id, correct:1}); }
-      else { showToast('👾 That was the alien side!'); beep(300,120,'sawtooth'); logEvent('response', {trial_id, correct:0}); }
+
+      if(accepted){ showToast('🏆 Opposite — correct!'); beep(880,110,'triangle'); }
+      else { showToast('👾 That was the alien side!'); beep(300,120,'sawtooth'); }
+
+      logEvent('response', {trial_id, correct: accepted?1:0});
       logEvent('trial_end', {trial_id, reason:'click'});
       addTrialSummary({
         task:'antisaccade', trial_id, cue_side: cueSideLeft?'left':'right',
-        correct: ok?1:0, rt_ms: rt, end_reason:'click'
+        correct: accepted?1:0, rt_ms: rt, end_reason:'click'
       });
       setTimeout(newTrial, 450);
     }
@@ -652,9 +666,10 @@
     newTrial();
   }
 
-  // Free viewing
+  // Free viewing — 10s
   async function runFreeViewing(){
-    setState('Free-Viewing — Relax (30s)');
+    const DURATION_MS = 10000; // reduced from 30s to 10s
+    setState('Free-Viewing — Relax (10s)');
     showToast('💤 Relax and watch the shapes'); logEvent('free_view_start', {});
     const t0 = now();
     function draw(){
@@ -670,7 +685,7 @@
       }
     }
     loop(draw);
-    setTimeout(()=>{ stopLoop(); clearStage(); showToast('✅ Free-Viewing complete'); setState('Free-Viewing complete'); logEvent('free_view_end', {}); }, 30000);
+    setTimeout(()=>{ stopLoop(); clearStage(); showToast('✅ Free-Viewing complete'); setState('Free-Viewing complete'); logEvent('free_view_end', {}); }, DURATION_MS);
   }
 
   // NEW: Fixation Stability — 15s
