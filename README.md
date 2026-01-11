@@ -250,3 +250,64 @@ This system is developed **for academic research and screening purposes only**.
 It **does not replace professional medical diagnosis** and should be used solely as a supportive screening tool.
 
 ---
+
+
+## 🗂️ Project Structure Overview
+
+The repository is organized in a **modular and collaborative structure** to support parallel development, clear version control, and academic evaluation.
+
+```text
+AI-Driven-Multimodal-ADHD-Screening/
+│
+├── README.md
+│
+├── Architecture/
+│   ├── systemArchitecture.jpeg
+│   ├── ethical_clearance_lrh.jpeg
+│   ├── school_data_collection_photos/
+│   └── hospital_data_collection_photos/
+│
+├── Proposals/
+│   ├── Speech_ADHD_Proposal.pdf
+│   ├── Handwriting_ADHD_Proposal.pdf
+│   ├── Posture_Hyperactivity_Proposal.pdf
+│   └── EyeTracking_Attention_Proposal.pdf
+│
+├── Frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   └── App.jsx
+│   ├── package.json
+│   └── vite.config.js
+│
+├── Backend/
+│   ├── app/
+│   │   ├── api/
+│   │   ├── models/
+│   │   ├── services/
+│   │   └── main.py
+│   ├── requirements.txt
+│   └── README.md
+│
+├── ML_Models/
+│   ├── speech_model/
+│   ├── handwriting_model/
+│   ├── posture_model/
+│   └── eye_tracking_model/
+│
+├── Demo_Games/
+│   ├── eye_tracking_demo/
+│   ├── posture_game/
+│   ├── speech_demo/
+│   └── handwriting_demo/
+│
+├── Individual_Progress/
+│   ├── Member_1/
+│   ├── Member_2/
+│   ├── Member_3/
+│   └── Member_4/
+│
+└── .gitignore
